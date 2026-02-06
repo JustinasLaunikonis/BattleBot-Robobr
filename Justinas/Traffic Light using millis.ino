@@ -8,60 +8,76 @@
   - Repeat forever
 */
 
-const int ledPinRed = 11;
-const int ledPinYellow = 10;
-const int ledPinGreen = 9;
+const int LedPinRed = 11;
+const int LedPinYellow = 10;
+const int LedPinGreen = 9;
+
+const int ButtonPin = 7;
 
 //stores the time (in ms) when the last light change happened
 unsigned long previousMillis = 0;
 
 //create named states for the traffic light
 enum LightState {
-  RED,        // Red LED is active
-  YELLOW,      // Yellow LED is active
-  GREEN      // Green LED is active
+  RED_IDLE,
+  WAIT_GREEN,
+  GREEN,
+  YELLOW
 };
 
-//keeps track of the current active light
-LightState currentState = RED;
+LightState currentState = RED_IDLE;
 
 void setup() {
-  pinMode(ledPinRed, OUTPUT);
-  pinMode(ledPinYellow, OUTPUT);
-  pinMode(ledPinGreen, OUTPUT);
+  pinMode(LedPinRed, OUTPUT);
+  pinMode(LedPinYellow, OUTPUT);
+  pinMode(LedPinGreen, OUTPUT);
+
+  pinMode(ButtonPin, INPUT);
 
   //red light on at start
-  previousMillis = millis();
   setLights(LOW, HIGH, HIGH); 
+
+  previousMillis = millis();
 }
 
 void loop() {
   
   //get the current time since the Arduino started (in milliseconds)
   unsigned long currentMillis = millis();
+  int buttonState = digitalRead(ButtonPin);
 
   switch (currentState) {
     
-    case RED:
-      if (currentMillis - previousMillis >= 3000) {
+    case RED_IDLE:
+      setLights(LOW, HIGH, HIGH);  // Red Idle
+      
+      if (buttonState == LOW) {
+        previousMillis = currentMillis;
+        currentState = WAIT_GREEN;
+      }
+      break;
+
+    case WAIT_GREEN:
+      if (currentMillis - previousMillis >= 1000) {
         previousMillis = currentMillis;
         currentState = GREEN;
-        setLights(HIGH, HIGH, LOW);  // GREEN ON
+        setLights(HIGH, HIGH, LOW); // Green On
       }
+      break;
 
     case GREEN:
       if (currentMillis - previousMillis >= 4000) {
         previousMillis = currentMillis;
         currentState = YELLOW;
-        setLights(HIGH, LOW, HIGH);  // YELLOW ON
+        setLights(HIGH, LOW, HIGH);  // Yellow On
       }
       break;
 
     case YELLOW:
       if (currentMillis - previousMillis >= 1000) {
         previousMillis = currentMillis;
-        currentState = RED;
-        setLights(LOW, HIGH, HIGH);  // RED ON
+        currentState = RED_IDLE;
+        setLights(LOW, HIGH, HIGH);  // Back to Red
       }
       break;
   }
@@ -69,7 +85,7 @@ void loop() {
 
 // Turns LED pins ON or OFF with one function
 void setLights(bool red, bool yellow, bool green) {
-  digitalWrite(ledPinRed, red);
-  digitalWrite(ledPinYellow, yellow);
-  digitalWrite(ledPinGreen, green);
+  digitalWrite(LedPinRed, red);
+  digitalWrite(LedPinYellow, yellow);
+  digitalWrite(LedPinGreen, green);
 }
