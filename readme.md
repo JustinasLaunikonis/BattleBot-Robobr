@@ -15,6 +15,8 @@ const int MOTOR_LEFT_BACK = 10;<br>
 const int MOTOR_RIGHT_BACK = 9;<br>
 const int MOTOR_RIGHT_FORWARD = 6;
 
+[PID Function](https://github.com/JustinasLaunikonis/BattleBot-Robobr/blob/main/Examples/PID%20-%20Permanent%20Straight%20Line%20Example.ino)
+
 ## Permanent Rotor Sensor Pins
 <b>Wires must be Black</b><br>
 
@@ -23,7 +25,7 @@ const int ROTATION_SENSOR_RIGHT = 2; (R1)
 
 
 ## Permanent LED Pins (Left to Right)
-<b>Wires must be the same as LED color</b><br>
+<b>Wires must match the LED color</b><br>
 
 const int LED_RED = 13;<br>
 const int LED_YELLOW = 12;<br>

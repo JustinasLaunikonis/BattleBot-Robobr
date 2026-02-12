@@ -7,6 +7,12 @@ const int MOTOR_RIGHT_FORWARD = 6;
 const int ROTATION_SENSOR_LEFT = 3;
 const int ROTATION_SENSOR_RIGHT = 2;
 
+// ===== WHEEL CONSTANTS =====
+const float WHEEL_DIAMETER = 65.0;
+const int PULSES_PER_ROTATION = 20;
+
+const float ROBOT_WIDTH = 1000.0;
+
 // ===== ROTATION COUNTERS =====
 volatile long rotationCounterLeft = 0;
 volatile long rotationCounterRight = 0;
@@ -33,14 +39,92 @@ void setup() {
 }
 
 void loop() {
-  // continuously balance the motors so the robot drives straight
   int baseSpeed = 150;
-  bool forward = true;
-  balanceMotors(baseSpeed, forward);
+
+  driveDistance(1000, baseSpeed); // forward 1m
+  delay(1000);
+
+  driveDistance(-1000, baseSpeed); // backward 1m
+  delay(1000);
+
+  baseSpeed = 200;
+  turn90(true, baseSpeed); // left 90
+  delay(1000);
+
+  turn90(false, baseSpeed); // right 90
+
+  while (true);
+}
+
+
+void turn90(bool turnLeft, int baseSpeed) {
+
+  rotationCounterLeft = 0;
+  rotationCounterRight = 0;
+
+  // full circle = 2piR
+  float arcLength = (PI * ROBOT_WIDTH) / 16.0;  // 90 degrees
+  float wheelCircumference = PI * WHEEL_DIAMETER;
+
+  int targetPulses = (arcLength / wheelCircumference) * PULSES_PER_ROTATION;
+
+  while (true) {
+
+    if (turnLeft) {
+      if (rotationCounterRight >= targetPulses) break;
+
+      // left wheel stopped
+      analogWrite(MOTOR_LEFT_FORWARD, 0);
+      analogWrite(MOTOR_LEFT_BACK, 0);
+
+      // right wheel forward
+      analogWrite(MOTOR_RIGHT_FORWARD, baseSpeed);
+      analogWrite(MOTOR_RIGHT_BACK, 0);
+    }
+    else {
+      if (rotationCounterLeft >= targetPulses) break;
+
+      // right wheel stopped
+      analogWrite(MOTOR_RIGHT_FORWARD, 0);
+      analogWrite(MOTOR_RIGHT_BACK, 0);
+
+      // left wheel forward
+      analogWrite(MOTOR_LEFT_FORWARD, baseSpeed);
+      analogWrite(MOTOR_LEFT_BACK, 0);
+    }
+  }
+
+  stopMotors();
+  delay(500);
+}
+
+
+void driveDistance(float millimeters, int baseSpeed) {
+
+  rotationCounterLeft = 0;
+  rotationCounterRight = 0;
+  errorIntegral = 0;
+
+  float wheelCircumference = PI * WHEEL_DIAMETER;
+
+  float rotationsNeeded = millimeters / wheelCircumference;
+
+  int targetPulses = abs(rotationsNeeded * PULSES_PER_ROTATION);
+
+  bool forward = (millimeters >= 0);
+
+  while ((abs(rotationCounterLeft) + abs(rotationCounterRight)) / 2 < targetPulses) {
+    balanceMotors(baseSpeed, forward);
+    delay(10);
+  }
+
+  analogWrite(MOTOR_LEFT_FORWARD, 0);
+  analogWrite(MOTOR_LEFT_BACK, 0);
+  analogWrite(MOTOR_RIGHT_FORWARD, 0);
+  analogWrite(MOTOR_RIGHT_BACK, 0);
 }
 
 // ===== AUTOMATIC MOTOR BALANCING FUNCTION =====
-// keeps both wheels synchronized
 void balanceMotors(int baseSpeed, bool forward) {
   
   // PROPORTIONAL_GAIN - How aggressively to correct current errors (higher = more responsive)
@@ -52,7 +136,7 @@ void balanceMotors(int baseSpeed, bool forward) {
   
   const float MAX_INTEGRAL = 150.0;
 
-  int lastDifference = 0;
+  static int lastDifference = 0;
 
   // check the differences in rotation count
   int difference = rotationCounterLeft - rotationCounterRight;
@@ -100,4 +184,11 @@ void countLeft() {
 
 void countRight() {
   rotationCounterRight++;
+}
+
+void stopMotors() {
+  analogWrite(MOTOR_LEFT_FORWARD, 0);
+  analogWrite(MOTOR_LEFT_BACK, 0);
+  analogWrite(MOTOR_RIGHT_FORWARD, 0);
+  analogWrite(MOTOR_RIGHT_BACK, 0);
 }
