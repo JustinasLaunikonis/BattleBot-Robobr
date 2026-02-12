@@ -1,21 +1,29 @@
 # Group [TD-INF-IT1C] Battlebot
 
+## Team Members
+- Justinas Launikonis<br>
+- Oleh Haliuk
+
 [GitHub Repository](https://github.com/JustinasLaunikonis/BattleBot-Robobr)
 
 
 ## Permanent Motor Pins (Left to Right)
-Wires must be Blue<br>
+<b>Wires must be Blue</b><br>
 
 const int MOTOR_LEFT_FORWARD = 11;<br>
 const int MOTOR_LEFT_BACK = 10;<br>
 const int MOTOR_RIGHT_BACK = 9;<br>
-const int MOTOR_RIGHT_FORWARD = 3;
+const int MOTOR_RIGHT_FORWARD = 6;
 
-[GitHub Repository](https://github.com/JustinasLaunikonis/BattleBot-Robobr)
+## Permanent Rotor Sensor Pins
+<b>Wires must be Black</b><br>
+
+const int ROTATION_SENSOR_LEFT = 3; (R2)<br>
+const int ROTATION_SENSOR_RIGHT = 2; (R1)
 
 
 ## Permanent LED Pins (Left to Right)
-Wires must be the same as LED color<br>
+<b>Wires must be the same as LED color</b><br>
 
 const int LED_RED = 13;<br>
 const int LED_YELLOW = 12;<br>
@@ -25,7 +33,7 @@ const int LED_GREEN = 8;
 
 
 ## Permanent Button Pins (B1 to B3)
-Wires must be White<br>
+<b>Wires must be White</b><br>
 
 const int BUTTON_1 = 12;<br>
 const int BUTTON_2 = 8;<br>
