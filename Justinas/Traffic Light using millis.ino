@@ -8,9 +8,9 @@
   - Repeat forever
 */
 
-const int LedPinRed = 11;
-const int LedPinYellow = 10;
-const int LedPinGreen = 9;
+const int LED_PIN_RED = 11;
+const int LED_PIN_YELLOW = 10;
+const int LED_PIN_GREEN = 9;
 
 const int ButtonPin = 7;
 
@@ -28,9 +28,9 @@ enum LightState {
 LightState currentState = RED_IDLE;
 
 void setup() {
-  pinMode(LedPinRed, OUTPUT);
-  pinMode(LedPinYellow, OUTPUT);
-  pinMode(LedPinGreen, OUTPUT);
+  pinMode(LED_PIN_RED, OUTPUT);
+  pinMode(LED_PIN_YELLOW, OUTPUT);
+  pinMode(LED_PIN_GREEN, OUTPUT);
 
   pinMode(ButtonPin, INPUT);
 
@@ -85,7 +85,7 @@ void loop() {
 
 // Turns LED pins ON or OFF with one function
 void setLights(bool red, bool yellow, bool green) {
-  digitalWrite(LedPinRed, red);
-  digitalWrite(LedPinYellow, yellow);
-  digitalWrite(LedPinGreen, green);
+  digitalWrite(LED_PIN_RED, red);
+  digitalWrite(LED_PIN_YELLOW, yellow);
+  digitalWrite(LED_PIN_GREEN, green);
 }
