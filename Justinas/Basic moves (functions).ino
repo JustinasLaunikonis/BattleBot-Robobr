@@ -118,10 +118,7 @@ void driveDistance(float millimeters, int baseSpeed) {
     delay(10);
   }
 
-  analogWrite(MOTOR_LEFT_FORWARD, 0);
-  analogWrite(MOTOR_LEFT_BACK, 0);
-  analogWrite(MOTOR_RIGHT_FORWARD, 0);
-  analogWrite(MOTOR_RIGHT_BACK, 0);
+  stopMotors();
 }
 
 // ===== AUTOMATIC MOTOR BALANCING FUNCTION =====
