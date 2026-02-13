@@ -25,7 +25,10 @@ const int ROTATION_SENSOR_RIGHT = 2; (R1)
 
 [Rotation Sensor Test](https://github.com/JustinasLaunikonis/BattleBot-Robobr/blob/main/Examples/Rotation%20Sensor%20Test.ino)
 
+## Permanent Ultrasonic Sensor Pins
 
+const int TRIG_PIN = 7; <br>
+const int ECHO_PIN = 8; 
 
 ## Permanent LED Pins (Left to Right)
 <b>Wires must match the LED color</b><br>
