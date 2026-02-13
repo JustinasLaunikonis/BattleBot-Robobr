@@ -23,6 +23,9 @@ const int MOTOR_RIGHT_FORWARD = 6;
 const int ROTATION_SENSOR_LEFT = 3; (R2)<br>
 const int ROTATION_SENSOR_RIGHT = 2; (R1)
 
+[Rotation Sensor Test](https://github.com/JustinasLaunikonis/BattleBot-Robobr/blob/main/Examples/PID%20-%20Permanent%20Straight%20Line%20Example.ino)
+
+
 
 ## Permanent LED Pins (Left to Right)
 <b>Wires must match the LED color</b><br>
