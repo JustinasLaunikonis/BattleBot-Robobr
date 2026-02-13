@@ -23,7 +23,7 @@ const int MOTOR_RIGHT_FORWARD = 6;
 const int ROTATION_SENSOR_LEFT = 3; (R2)<br>
 const int ROTATION_SENSOR_RIGHT = 2; (R1)
 
-[Rotation Sensor Test](https://github.com/JustinasLaunikonis/BattleBot-Robobr/blob/main/Examples/PID%20-%20Permanent%20Straight%20Line%20Example.ino)
+[Rotation Sensor Test](https://github.com/JustinasLaunikonis/BattleBot-Robobr/blob/main/Examples/Rotation%20Sensor%20Test.ino)
 
 
 
