@@ -71,14 +71,6 @@ An Arduino-based autonomous robot designed for competitive battles, featuring mo
 
 *Examples: [Hold Down Button](https://github.com/JustinasLaunikonis/BattleBot-Robobr/blob/main/Examples/Hold%20Down%20Button%20Example.ino) | [Press Button](https://github.com/JustinasLaunikonis/BattleBot-Robobr/blob/main/Examples/Press%20Button%20Example.ino)*
 
-## Quick Start
-
-1. Connect all components according to the pin configuration above
-2. Ensure wire colors match the requirements (Blue for motors, Black for sensors, White for buttons, LED-matching for indicators)
-3. Upload your Arduino sketch with the specified pin constants
-4. Test individual components using the provided example sketches
-5. Integrate PID control for autonomous movement
-
 ## Examples
 
 The repository includes several example sketches to help you get started:
