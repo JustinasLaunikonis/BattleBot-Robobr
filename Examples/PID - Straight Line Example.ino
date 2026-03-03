@@ -7,6 +7,10 @@ const int MOTOR_RIGHT_FORWARD = 6;
 const int ROTATION_SENSOR_LEFT = 3;
 const int ROTATION_SENSOR_RIGHT = 2;
 
+// ===== WHEEL CONSTANTS =====
+const float WHEEL_CIRCUMFERENCE = 205.0; // WHEEL_DIAMETER * PI
+const int PULSES_PER_ROTATION = 20;
+
 // ===== ROTATION COUNTERS =====
 volatile long rotationCounterLeft = 0;
 volatile long rotationCounterRight = 0;
@@ -26,21 +30,45 @@ void setup() {
 
   // RISING = trigger when signal goes from LOW to HIGH
   // runs countLeft() every time the left wheel rotates
-  attachInterrupt(digitalPinToInterrupt(3), countLeft, RISING);
-  attachInterrupt(digitalPinToInterrupt(2), countRight, RISING);
+  attachInterrupt(digitalPinToInterrupt(3), onLeftWheelPulse, RISING);
+  attachInterrupt(digitalPinToInterrupt(2), onRightWheelPulse, RISING);
 
   delay(2000);
 }
 
 void loop() {
-  // continuously balance the motors so the robot drives straight
   int baseSpeed = 150;
-  bool forward = true;
-  balanceMotors(baseSpeed, forward);
+
+  driveDistance(1000, baseSpeed); // forward 1m
+  delay(1000);
+
+  driveDistance(-1000, baseSpeed); // backward 1m
+  delay(1000);
+
+  while (true);
+}
+
+void driveDistance(float millimeters, int baseSpeed) {
+
+  rotationCounterLeft = 0;
+  rotationCounterRight = 0;
+  errorIntegral = 0;
+
+  float rotationsNeeded = millimeters / WHEEL_CIRCUMFERENCE;
+
+  int targetPulses = abs(rotationsNeeded * PULSES_PER_ROTATION);
+
+  bool forward = (millimeters >= 0);
+
+  while ((abs(rotationCounterLeft) + abs(rotationCounterRight)) / 2 < targetPulses) {
+    balanceMotors(baseSpeed, forward);
+    delay(10);
+  }
+
+  stopMotors();
 }
 
 // ===== AUTOMATIC MOTOR BALANCING FUNCTION =====
-// keeps both wheels synchronized
 void balanceMotors(int baseSpeed, bool forward) {
   
   // PROPORTIONAL_GAIN - How aggressively to correct current errors (higher = more responsive)
@@ -52,7 +80,7 @@ void balanceMotors(int baseSpeed, bool forward) {
   
   const float MAX_INTEGRAL = 150.0;
 
-  int lastDifference = 0;
+  static int lastDifference = 0;
 
   // check the differences in rotation count
   int difference = rotationCounterLeft - rotationCounterRight;
@@ -68,24 +96,20 @@ void balanceMotors(int baseSpeed, bool forward) {
   float correction = (PROPORTIONAL_GAIN * difference) + (INTEGRAL_GAIN * errorIntegral) + (DERIVATIVE_GAIN * derivative);
 
   // if left is ahead, slow it down and speed up right
-  int speedLeft = baseSpeed - correction;
-  int speedRight = baseSpeed + correction;
+  int powerLeft = baseSpeed - correction;
+  int powerRight = baseSpeed + correction;
 
-  // keep speed within valid range
-  speedLeft = constrain(speedLeft, 0, 255);
-  speedRight = constrain(speedRight, 0, 255);
+  // keep power within valid range
+  powerLeft = constrain(powerLeft, 0, 255);
+  powerRight = constrain(powerRight, 0, 255);
 
-  // send speed commands to motors
+  // send power commands to motors
   if (forward) {
-    analogWrite(MOTOR_LEFT_FORWARD, speedLeft);
-    analogWrite(MOTOR_LEFT_BACK, 0);
-    analogWrite(MOTOR_RIGHT_FORWARD, speedRight);
-    analogWrite(MOTOR_RIGHT_BACK, 0);
+    setLeftMotor(powerLeft);
+    setRightMotor(powerRight);
   } else {
-    analogWrite(MOTOR_LEFT_FORWARD, 0);
-    analogWrite(MOTOR_LEFT_BACK, speedLeft);
-    analogWrite(MOTOR_RIGHT_FORWARD, 0);
-    analogWrite(MOTOR_RIGHT_BACK, speedRight);
+    setLeftMotor(-powerLeft);
+    setRightMotor(-powerRight);
   }
   
   delay(10); 
@@ -94,10 +118,35 @@ void balanceMotors(int baseSpeed, bool forward) {
 // ===== HELPER FUNCTIONS =====
 // These run automatically when encoders detect wheel rotation
 
-void countLeft() {
+void onLeftWheelPulse() {
   rotationCounterLeft++;
 }
 
-void countRight() {
+void onRightWheelPulse() {
   rotationCounterRight++;
+}
+
+void setLeftMotor(int speed) {
+  if (speed >= 0) {
+    analogWrite(MOTOR_LEFT_FORWARD, speed);
+    analogWrite(MOTOR_LEFT_BACK, 0);
+  } else {
+    analogWrite(MOTOR_LEFT_FORWARD, 0);
+    analogWrite(MOTOR_LEFT_BACK, -speed);
+  }
+}
+
+void setRightMotor(int speed) {
+  if (speed >= 0) {
+    analogWrite(MOTOR_RIGHT_FORWARD, speed);
+    analogWrite(MOTOR_RIGHT_BACK, 0);
+  } else {
+    analogWrite(MOTOR_RIGHT_FORWARD, 0);
+    analogWrite(MOTOR_RIGHT_BACK, -speed);
+  }
+}
+
+void stopMotors() {
+  setLeftMotor(0);
+  setRightMotor(0);
 }
