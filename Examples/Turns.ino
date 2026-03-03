@@ -8,11 +8,9 @@ const int ROTATION_SENSOR_LEFT = 3;
 const int ROTATION_SENSOR_RIGHT = 2;
 
 // ===== WHEEL CONSTANTS =====
-const float WHEEL_DIAMETER = 65.0;
 const float WHEEL_CIRCUMFERENCE = 205.0; // WHEEL_DIAMETER * PI
 const int PULSES_PER_ROTATION = 20;
 
-const float ROBOT_WIDTH = 1000.0;
 const float TURN_ARC_PER_DEGREE = 2.18;  // arc length per degree of turn
 
 // ===== ROTATION COUNTERS =====
