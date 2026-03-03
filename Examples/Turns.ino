@@ -17,9 +17,6 @@ const float TURN_ARC_PER_DEGREE = 2.18;  // arc length per degree of turn
 volatile long rotationCounterLeft = 0;
 volatile long rotationCounterRight = 0;
 
-// tracks accumulated error over time
-float errorIntegral = 0;
-
 void setup() {
   pinMode(MOTOR_LEFT_FORWARD, OUTPUT);
   pinMode(MOTOR_LEFT_BACK, OUTPUT);
