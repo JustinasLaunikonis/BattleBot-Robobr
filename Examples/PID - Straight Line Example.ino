@@ -18,6 +18,10 @@ volatile long rotationCounterRight = 0;
 // tracks accumulated error over time
 float errorIntegral = 0;
 
+// ===== PID TIMING VARIABLES =====
+unsigned long lastPidUpdate = 0;
+const unsigned long PID_UPDATE_INTERVAL = 50; // Run PID every 50ms
+
 void setup() {
   pinMode(MOTOR_LEFT_FORWARD, OUTPUT);
   pinMode(MOTOR_LEFT_BACK, OUTPUT);
@@ -59,17 +63,25 @@ void driveDistance(float millimeters, int baseSpeed) {
   int targetPulses = abs(rotationsNeeded * PULSES_PER_ROTATION);
 
   bool forward = (millimeters >= 0);
+  
+  lastPidUpdate = millis(); // Initialize timing
 
   while ((abs(rotationCounterLeft) + abs(rotationCounterRight)) / 2 < targetPulses) {
-    balanceMotors(baseSpeed, forward);
-    delay(10);
+    unsigned long currentTime = millis();
+    
+    // Only update PID at fixed intervals for consistent behavior
+    if (currentTime - lastPidUpdate >= PID_UPDATE_INTERVAL) {
+      float deltaTime = (currentTime - lastPidUpdate) / 1000.0; // Convert to seconds
+      balanceMotors(baseSpeed, forward, deltaTime);
+      lastPidUpdate = currentTime;
+    }
   }
 
   stopMotors();
 }
 
 // ===== AUTOMATIC MOTOR BALANCING FUNCTION =====
-void balanceMotors(int baseSpeed, bool forward) {
+void balanceMotors(int baseSpeed, bool forward, float deltaTime) {
   
   // PROPORTIONAL_GAIN - How aggressively to correct current errors (higher = more responsive)
   // INTEGRAL_GAIN - How much to "remember" past errors and eliminate drift
@@ -85,12 +97,12 @@ void balanceMotors(int baseSpeed, bool forward) {
   // check the differences in rotation count
   int difference = rotationCounterLeft - rotationCounterRight;
 
-  // update integral with anti-windup
-  errorIntegral += difference;
+  // update integral with anti-windup (scaled by time)
+  errorIntegral += difference * deltaTime;
   errorIntegral = constrain(errorIntegral, -MAX_INTEGRAL, MAX_INTEGRAL);
   
-  // calculate derivative (rate of change of error)
-  int derivative = difference - lastDifference;
+  // calculate derivative (rate of change of error, scaled by time)
+  float derivative = (difference - lastDifference) / deltaTime;
   lastDifference = difference;
 
   float correction = (PROPORTIONAL_GAIN * difference) + (INTEGRAL_GAIN * errorIntegral) + (DERIVATIVE_GAIN * derivative);
@@ -111,8 +123,6 @@ void balanceMotors(int baseSpeed, bool forward) {
     setLeftMotor(-powerLeft);
     setRightMotor(-powerRight);
   }
-  
-  delay(10); 
 }
 
 // ===== HELPER FUNCTIONS =====
