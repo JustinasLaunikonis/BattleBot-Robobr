@@ -1,6 +1,6 @@
 # BattleBot
 
-An Arduino-based autonomous robot designed for competitive battles, featuring motor control, rotation sensing, ultrasonic distance detection, LED indicators, and button input controls.
+An Arduino-based autonomous robot designed for an Information Technology NHL Stenden race, featuring motor control, rotation sensing, ultrasonic distance detection, LED indicators, and button input controls.
 
 ## Features
 
@@ -10,13 +10,6 @@ An Arduino-based autonomous robot designed for competitive battles, featuring mo
 - **Ultrasonic Distance Detection**: Real-time obstacle detection and distance measurement
 - **LED Status Indicators**: Three-color LED system for robot state visualization
 - **Button Input Controls**: Three programmable buttons for mode selection and control
-
-## Team
-
-- Justinas Launikonis
-- Oleh Haliuk
-
-[GitHub Repository](https://github.com/JustinasLaunikonis/BattleBot-Robobr)
 
 ## Pin Configuration
 
