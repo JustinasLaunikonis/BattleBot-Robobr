@@ -21,7 +21,7 @@ const int BLACK_THRESHOLD = 800;
 const int SPEED_FULL = 255;           //default 255
 const int SPEED_SLIGHT_CORRECT = 170; //default 170
 const int SPEED_HARD_CORRECT = 60;    //default 60
-const int SPEED_TANK_SHARP = 230;     //default 230
+const int SPEED_TANK_SHARP = 255;     //default 230
 const int SPEED_SEARCH = 255;         //default 180
 const int SPEED_STRAIGHT_LOST = 160;  //default 120
 
@@ -37,10 +37,8 @@ void setup() {
   pinMode(MOTOR_LEFT_BACK, OUTPUT);
   pinMode(MOTOR_RIGHT_FORWARD, OUTPUT);
   pinMode(MOTOR_RIGHT_BACK, OUTPUT);
-
   pixels.begin();
   pixels.setBrightness(50);
-
   pixels.show();
 }
 
@@ -64,7 +62,6 @@ void loop() {
     // Slight left. Both wheels moving, right faster
     driveForward(SPEED_SLIGHT_CORRECT, SPEED_FULL);
     lastTurnDir = 1;
-    
 
   } else if (sensorValues[2] > BLACK_THRESHOLD) {
     // Moderate right. Tighter differential
@@ -115,7 +112,7 @@ void loop() {
   } else {
     lightsOff();
   }
-}
+} 
 
 void driveForward(int leftSpeed, int rightSpeed) {
   analogWrite(MOTOR_LEFT_FORWARD, leftSpeed);
