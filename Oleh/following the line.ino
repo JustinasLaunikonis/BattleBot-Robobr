@@ -1,3 +1,11 @@
+#include <Adafruit_NeoPixel.h>
+
+// ===== NEOPIXELS =====
+const int PIN_NEO = 12;
+const int NUM_PIXELS = 4;
+
+Adafruit_NeoPixel pixels(NUM_PIXELS, PIN_NEO, NEO_RGB + NEO_KHZ800);
+
 // ===== SENSOR PINS =====
 const int NUM_SENSORS = 8;
 const int SENSOR_PINS[NUM_SENSORS] = {A0, A1, A2, A3, A4, A5, A6, A7};
@@ -29,6 +37,11 @@ void setup() {
   pinMode(MOTOR_LEFT_BACK, OUTPUT);
   pinMode(MOTOR_RIGHT_FORWARD, OUTPUT);
   pinMode(MOTOR_RIGHT_BACK, OUTPUT);
+
+  pixels.begin();
+  pixels.setBrightness(50);
+
+  pixels.show();
 }
 
 void loop() {
@@ -51,6 +64,7 @@ void loop() {
     // Slight left. Both wheels moving, right faster
     driveForward(SPEED_SLIGHT_CORRECT, SPEED_FULL);
     lastTurnDir = 1;
+    
 
   } else if (sensorValues[2] > BLACK_THRESHOLD) {
     // Moderate right. Tighter differential
@@ -92,6 +106,15 @@ void loop() {
       driveForward(SPEED_STRAIGHT_LOST, SPEED_STRAIGHT_LOST);
     }
   }
+
+  // Update indicator lights based on turn direction
+  if (lastTurnDir < 0) {
+    rightSignalLights();
+  } else if (lastTurnDir > 0) {
+    leftSignalLights();
+  } else {
+    lightsOff();
+  }
 }
 
 void driveForward(int leftSpeed, int rightSpeed) {
@@ -120,4 +143,23 @@ void stopMotors() {
   analogWrite(MOTOR_LEFT_BACK, 0);
   analogWrite(MOTOR_RIGHT_FORWARD, 0);
   analogWrite(MOTOR_RIGHT_BACK, 0);
+}
+
+void leftSignalLights() {
+  pixels.clear();
+  pixels.setPixelColor(0, pixels.Color(255, 172, 28));    // front-left
+  pixels.setPixelColor(3, pixels.Color(255, 172, 28));    // back-left
+  pixels.show();
+}
+
+void rightSignalLights() {
+  pixels.clear();
+  pixels.setPixelColor(1, pixels.Color(255, 172, 28));    // front-right
+  pixels.setPixelColor(2, pixels.Color(255, 172, 28));    // back-right
+  pixels.show();
+}
+
+void lightsOff() {
+  pixels.clear();
+  pixels.show();
 }
