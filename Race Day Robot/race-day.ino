@@ -16,11 +16,16 @@ const int MOTOR_LEFT_BACK = 10;
 const int MOTOR_RIGHT_BACK = 9;
 const int MOTOR_RIGHT_FORWARD = 6;
 
+// ===== ULTRASONIC SENSOR =====
+const int ULTRASONIC_TRIG = 7;
+const int ULTRASONIC_ECHO = 8;
+const int OBSTACLE_DISTANCE_CM = 12;
+
 // ===== THRESHOLDS AND SPEEDS =====
 const int BLACK_THRESHOLD = 800;      // 1:00         // 0:54   // 0:52
 const int SPEED_FULL = 255;           //default 255   // 255    // 255
 const int SPEED_SLIGHT_CORRECT = 210; //default 170   // 210    // 210
-const int SPEED_HARD_CORRECT = 120;    //default 60   // 60     // 120
+const int SPEED_HARD_CORRECT = 120;   //default 60   // 60     // 120
 const int SPEED_TANK_SHARP = 230;     //default 230   // 230    // 230
 const int SPEED_SEARCH = 255;         //default 180   // 180    // 255
 const int SPEED_STRAIGHT_LOST = 200;  //default 120   // 120    // 200
@@ -37,14 +42,21 @@ void setup() {
   pinMode(MOTOR_LEFT_BACK, OUTPUT);
   pinMode(MOTOR_RIGHT_FORWARD, OUTPUT);
   pinMode(MOTOR_RIGHT_BACK, OUTPUT);
+  pinMode(ULTRASONIC_TRIG, OUTPUT);
+  pinMode(ULTRASONIC_ECHO, INPUT);
+  
   pixels.begin();
   pixels.setBrightness(50);
   pixels.show();
 }
 
 void loop() {
-  int i;
-  for (i = 0; i < NUM_SENSORS; i++) {
+  if (isObstacleDetected()) {
+    avoidObject();
+    return;
+  }
+
+  for (int i = 0; i < NUM_SENSORS; i++) {
     sensorValues[i] = analogRead(SENSOR_PINS[i]);
   }
 
@@ -159,4 +171,71 @@ void rightSignalLights() {
 void lightsOff() {
   pixels.clear();
   pixels.show();
+}
+
+bool isObstacleDetected() {
+  digitalWrite(ULTRASONIC_TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(ULTRASONIC_TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(ULTRASONIC_TRIG, LOW);
+
+  long duration = pulseIn(ULTRASONIC_ECHO, HIGH, 25000UL);
+
+  if (duration == 0) {
+    return false;
+  }
+
+  long distanceCm = duration / 58;
+
+  return (distanceCm > 0 && distanceCm <= OBSTACLE_DISTANCE_CM);
+}
+
+void avoidObject() {
+  stopMotors();
+
+  // Turn right ~90 degrees
+  tankTurnRight(SPEED_TANK_SHARP);
+  delay(350);
+  stopMotors();
+
+  // Move forward
+  driveForward(SPEED_FULL, SPEED_FULL);
+  delay(500);
+  stopMotors();
+
+  // Turn left ~90 degrees
+  tankTurnLeft(SPEED_TANK_SHARP);
+  delay(400);
+  stopMotors();
+
+  // Move forward more
+  driveForward(SPEED_FULL, SPEED_FULL);
+  delay(700);
+  stopMotors();
+
+  // Turn left ~90 degrees
+  tankTurnLeft(SPEED_TANK_SHARP);
+  delay(450);
+  stopMotors();
+
+  // Move forward until line is found, then stop and exit
+  driveForward(SPEED_FULL, SPEED_FULL);
+  while (true) {
+    bool lineFound = false;
+
+    for (int i = 0; i < NUM_SENSORS; i++) {
+      if (analogRead(SENSOR_PINS[i]) > BLACK_THRESHOLD) {
+        lineFound = true;
+        break;
+      }
+    }
+
+    if (lineFound) {
+      stopMotors();
+      return;
+    }
+
+    delay(5);
+  }
 }
