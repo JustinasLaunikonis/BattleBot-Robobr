@@ -21,6 +21,11 @@ const int ULTRASONIC_TRIG = 7;
 const int ULTRASONIC_ECHO = 8;
 const int OBSTACLE_DISTANCE_CM = 12;
 
+// ===== GRIPPER SERVO =====
+const int SERVO_PIN = 4;
+const int SERVO_CLOSED_PULSE = 1000;
+const int SERVO_OPEN_PULSE = 1500;
+
 // ===== THRESHOLDS AND SPEEDS =====
 const int BLACK_THRESHOLD = 800;      // 1:00         // 0:54   // 0:52
 const int SPEED_FULL = 255;           //default 255   // 255    // 255
@@ -29,6 +34,10 @@ const int SPEED_HARD_CORRECT = 120;   //default 60   // 60     // 120
 const int SPEED_TANK_SHARP = 230;     //default 230   // 230    // 230
 const int SPEED_SEARCH = 255;         //default 180   // 180    // 255
 const int SPEED_STRAIGHT_LOST = 200;  //default 120   // 120    // 200
+const unsigned long FINISH_BLACK_HOLD_MS = 50;
+const unsigned long FINISH_FORWARD_MS = 500;
+const unsigned long FINISH_BACKWARD_MS = 750;
+const int FINISH_SEQUENCE_SPEED = SPEED_FULL;
 
 // -1 = last turned right
 // +1 = last turned left
@@ -36,8 +45,11 @@ const int SPEED_STRAIGHT_LOST = 200;  //default 120   // 120    // 200
 int lastTurnDir = 0;
 
 int sensorValues[NUM_SENSORS] = {0};
+unsigned long allBlackStartMs = 0;
 
 void setup() {
+  pinMode(SERVO_PIN, OUTPUT);
+
   pinMode(MOTOR_LEFT_FORWARD, OUTPUT);
   pinMode(MOTOR_LEFT_BACK, OUTPUT);
   pinMode(MOTOR_RIGHT_FORWARD, OUTPUT);
@@ -48,16 +60,33 @@ void setup() {
   pixels.begin();
   pixels.setBrightness(50);
   pixels.show();
+
+  // Start with gripper closed.
+  servoWrite(SERVO_CLOSED_PULSE);
 }
 
 void loop() {
-  if (isObstacleDetected()) {
-    avoidObject();
-    return;
-  }
+  // Keep applying closed pulse so the gripper stays shut.
+  servoWrite(SERVO_CLOSED_PULSE);
 
   for (int i = 0; i < NUM_SENSORS; i++) {
     sensorValues[i] = analogRead(SENSOR_PINS[i]);
+  }
+
+  // Finish condition: black square detected by all sensors.
+  if (areAllSensorsBlack()) {
+    if (allBlackStartMs == 0) {
+      allBlackStartMs = millis();
+    } else if (millis() - allBlackStartMs >= FINISH_BLACK_HOLD_MS) {
+      finishRace();
+    }
+  } else {
+    allBlackStartMs = 0;
+  }
+
+  if (isObstacleDetected()) {
+    avoidObject();
+    return;
   }
 
   if (sensorValues[3] > BLACK_THRESHOLD && sensorValues[4] > BLACK_THRESHOLD) {
@@ -147,6 +176,13 @@ void tankTurnLeft(int speed) {
   analogWrite(MOTOR_RIGHT_BACK, 0);
 }
 
+void driveBackward(int leftSpeed, int rightSpeed) {
+  analogWrite(MOTOR_LEFT_FORWARD, 0);
+  analogWrite(MOTOR_LEFT_BACK, leftSpeed);
+  analogWrite(MOTOR_RIGHT_FORWARD, 0);
+  analogWrite(MOTOR_RIGHT_BACK, rightSpeed);
+}
+
 void stopMotors() {
   analogWrite(MOTOR_LEFT_FORWARD, 0);
   analogWrite(MOTOR_LEFT_BACK, 0);
@@ -173,6 +209,54 @@ void lightsOff() {
   pixels.show();
 }
 
+bool areAllSensorsBlack() {
+  for (int i = 0; i < NUM_SENSORS; i++) {
+    if (sensorValues[i] <= BLACK_THRESHOLD) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+void finishRace() {
+  lightsOff();
+
+  // Finishing sequence: forward, backward, then drop object.
+  driveForward(FINISH_SEQUENCE_SPEED, FINISH_SEQUENCE_SPEED);
+  delay(FINISH_FORWARD_MS);
+  stopMotors();
+
+  driveBackward(FINISH_SEQUENCE_SPEED, FINISH_SEQUENCE_SPEED);
+  delay(FINISH_BACKWARD_MS);
+  stopMotors();
+
+  // Release gripper before final forward move.
+  servoWrite(SERVO_OPEN_PULSE);
+
+  driveBackward(FINISH_SEQUENCE_SPEED, FINISH_SEQUENCE_SPEED);
+  delay(FINISH_BACKWARD_MS);
+  stopMotors();
+
+
+  // Hold final state forever: gripper open and motors stopped.
+  while (true) {
+    servoWrite(SERVO_OPEN_PULSE);
+    stopMotors();
+  }
+}
+
+void servoWrite(int pulseWidth) {
+  unsigned long start = millis();
+
+  while (millis() - start < 20) {
+    digitalWrite(SERVO_PIN, HIGH);
+    delayMicroseconds(pulseWidth);
+    digitalWrite(SERVO_PIN, LOW);
+    delayMicroseconds(20000 - pulseWidth);
+  }
+}
+
 bool isObstacleDetected() {
   digitalWrite(ULTRASONIC_TRIG, LOW);
   delayMicroseconds(2);
@@ -192,6 +276,7 @@ bool isObstacleDetected() {
 }
 
 void avoidObject() {
+  servoWrite(SERVO_CLOSED_PULSE);
   stopMotors();
 
   // Turn right ~90 degrees
@@ -222,6 +307,7 @@ void avoidObject() {
   // Move forward until line is found, then stop and exit
   driveForward(SPEED_FULL, SPEED_FULL);
   while (true) {
+    servoWrite(SERVO_CLOSED_PULSE);
     bool lineFound = false;
 
     for (int i = 0; i < NUM_SENSORS; i++) {
