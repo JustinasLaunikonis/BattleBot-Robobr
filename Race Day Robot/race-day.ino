@@ -1,101 +1,114 @@
 #include <Adafruit_NeoPixel.h>
 
-// ===== NEOPIXELS =====
+// ===== HARDWARE PINS =====
 const int PIN_NEO = 12;
-const int NUM_PIXELS = 4;
 
-Adafruit_NeoPixel pixels(NUM_PIXELS, PIN_NEO, NEO_RGB + NEO_KHZ800);
-
-// ===== SENSOR PINS =====
-const int NUM_SENSORS = 8;
-const int SENSOR_PINS[NUM_SENSORS] = { A0, A1, A2, A3, A4, A5, A6, A7 };
-
-// ===== MOTOR CONTROL PINS =====
 const int MOTOR_LEFT_FORWARD = 11;
 const int MOTOR_LEFT_BACK = 10;
 const int MOTOR_RIGHT_BACK = 9;
 const int MOTOR_RIGHT_FORWARD = 6;
 
-// ===== ENCODERS =====
 const int ROTATION_SENSOR_LEFT = 3;
 const int ROTATION_SENSOR_RIGHT = 2;
 
-// ===== ULTRASONIC SENSOR =====
 const int ULTRASONIC_TRIG = 7;
 const int ULTRASONIC_ECHO = 8;
-const int OBSTACLE_DISTANCE_CM = 12;
 
-// ===== GRIPPER SERVO =====
 const int SERVO_PIN = 4;
-const int SERVO_CLOSED_PULSE = 1000;
-const int SERVO_OPEN_PULSE = 1500;
 
-// ===== THRESHOLDS AND SPEEDS =====
-const int BLACK_THRESHOLD = 800;       // 1:00         // 0:54   // 0:52
-const int SPEED_FULL = 255;            //default 255   // 255    // 255
-const int SPEED_SLIGHT_CORRECT = 210;  //default 170   // 210    // 210
-const int SPEED_HARD_CORRECT = 120;    //default 60   // 60     // 120
-const int SPEED_TANK_SHARP = 230;      //default 230   // 230    // 230
-const int SPEED_SEARCH = 255;          //default 180   // 180    // 255
-const int SPEED_STRAIGHT_LOST = 200;   //default 120   // 120    // 200
-const unsigned long FINISH_BLACK_HOLD_MS = 50;
-const unsigned long FINISH_FORWARD_MS = 500;
-const unsigned long FINISH_BACKWARD_MS = 750;
-const int FINISH_SEQUENCE_SPEED = SPEED_FULL;
+// ===== SENSOR / PIXEL LAYOUT =====
+const int NUM_PIXELS = 4;
+const int NUM_SENSORS = 8;
+const int SENSOR_PINS[NUM_SENSORS] = { A0, A1, A2, A3, A4, A5, A6, A7 };
 
-// -1 = last turned right
-// +1 = last turned left
-// 0 = initial state
-int lastTurnDir = 0;
+Adafruit_NeoPixel pixels(NUM_PIXELS, PIN_NEO, NEO_RGB + NEO_KHZ800);
 
-int sensorValues[NUM_SENSORS] = { 0 };
-float sensorMin[NUM_SENSORS];
-float sensorMax[NUM_SENSORS];
-unsigned long allBlackStartMs = 0;
+// ===== MOTION / PHYSICS CONSTANTS =====
+const int PULSES_PER_ROTATION = 20;
+const int baseSpeed = 200;
 
-// ===== PID VARIABLES =====
+// ===== PID TUNING =====
 float Kp = 8.0;
 float Ki = 0.2;
 float Kd = 1.2;
 
-// ===== ROBOT STATE =====
-int state = 0;
+// ===== TRACK / DETECTION THRESHOLDS =====
+const int BLACK_THRESHOLD = 800;
+int dynamicBlackThreshold = 600;
+const int OBSTACLE_DISTANCE_CM = 12;
+
+// ===== SPEED TUNING =====
+const int SPEED_FULL = 255;
+const int SPEED_SLIGHT_CORRECT = 170;
+const int SPEED_HARD_CORRECT = 120;
+const int SPEED_TANK_SHARP = 230;
+const int SPEED_SEARCH = 255;
+const int SPEED_STRAIGHT_LOST = 200;
+
+// ===== TIMING CONSTANTS =====
+const unsigned long FINISH_BLACK_HOLD_MS = 60;
+const unsigned long FINISH_FORWARD_MS = 500;
+const unsigned long FINISH_BACKWARD_MS = 750;
+const unsigned long SERVO_HOLD_INTERVAL_MS = 80;
+const unsigned long OBSTACLE_CHECK_INTERVAL_MS = 35;
+const unsigned long TURN_SETTLE_DELAY_MS = 80;
+const unsigned long lineHoldTime = 120;
+
+// ===== SERVO PULSE CONSTANTS =====
+const int SERVO_CLOSED_PULSE = 1000;
+const int SERVO_OPEN_PULSE = 1500;
+
+// ===== LIGHT MODES =====
+const int LIGHT_MODE_OFF = 0;
+const int LIGHT_MODE_LEFT_SIGNAL = 1;
+const int LIGHT_MODE_RIGHT_SIGNAL = 2;
+const int LIGHT_MODE_FORWARD = 3;
+const int LIGHT_MODE_STOPPED = 4;
+
+// ===== ROBOT STATES =====
+const int STATE_START = 0;
+const int STATE_FOLLOW_LINE = 1;
+const int STATE_FINISH = 2;
+
+// ===== RUNTIME STATE: MAIN FLOW =====
+int state = STATE_START;
 int subState = -1;
 unsigned long actionStartTime = 0;
-
-// ===== MOVEMENT FLAG =====
 bool moveForward = true;
 
-// ===== BASE SPEED =====
-const int baseSpeed = 200;
-
-// ===== WHEEL CONSTANTS =====
-const float WHEEL_DIAMETER = 65.0;
-const int PULSES_PER_ROTATION = 20;
-
-// ===== MOTOR BIAS =====
-int motorBiasLeft = -35;
-int motorBiasRight = 15;
-
+// ===== RUNTIME STATE: LINE TRACKING =====
+// -1 = last turned right
+// +1 = last turned left
+// 0 = initial state
+int lastTurnDir = 0;
 int lineTransitions = 0;
 bool onLine = false;
 unsigned long lineStartTime = 0;
-const unsigned long lineHoldTime = 120;
+unsigned long allBlackStartMs = 0;
 
-// ===== DYNAMIC THRESHOLD =====
-int dynamicBlackThreshold = 600;
+// ===== RUNTIME STATE: SENSOR DATA =====
+int sensorValues[NUM_SENSORS] = { 0 };
+float sensorMin[NUM_SENSORS];
+float sensorMax[NUM_SENSORS];
 
-long duration;
-int distance;
-
+// ===== RUNTIME STATE: MOTOR / ENCODER =====
+int motorBiasLeft = -35;
+int motorBiasRight = 15;
 volatile long rotationCounterLeft = 0;
 volatile long rotationCounterRight = 0;
+
+// ===== RUNTIME STATE: LIGHT / SERVO / ULTRASONIC =====
+int currentLightMode = -1;
+int currentServoPulse = -1;
+unsigned long lastServoHoldMs = 0;
+unsigned long lastObstacleCheckMs = 0;
+bool obstacleDetectedCached = false;
 
 // ===== FUNCTIONS PROTOTYPES =====
 void stopMotors();
 void moveStraightPID(int baseSpeed, int biasLeft, int biasRight);
 void driveDistance(float millimeters, int baseSpeed);
-void turnLeft90();
+void turn(int degrees);
 void readSensors();
 void servoWrite(int pulseWidth);
 void onLeftWheelPulse();
@@ -105,13 +118,15 @@ void driveForward(int leftSpeed, int rightSpeed);
 void tankTurnRight(int speed);
 void tankTurnLeft(int speed);
 void driveBackward(int leftSpeed, int rightSpeed);
-void leftSignalLights();
-void rightSignalLights();
-void lightsOff();
+void setLightsByMode(int mode);
+void setGripperTarget(int pulseWidth);
+void holdGripper();
 bool areAllSensorsBlack();
-void finishRace();
 bool isObstacleDetected();
 void avoidObject();
+void runStartProcedure();
+void runFollowLineProcedure();
+void runFinishProcedure();
 
 void setup() {
   Serial.begin(9600);
@@ -140,227 +155,248 @@ void setup() {
   pixels.setBrightness(50);
   pixels.show();
 
-  // Start with gripper closed.
-  servoWrite(SERVO_CLOSED_PULSE);
+  setGripperTarget(SERVO_OPEN_PULSE);
 
   delay(1000);
 }
 
 void loop() {
   switch (state) {
-    case 0:
+    case STATE_START:
       {
-        if (subState == -1) {
-          digitalWrite(ULTRASONIC_TRIG, LOW);
-          delayMicroseconds(2);
-          digitalWrite(ULTRASONIC_TRIG, HIGH);
-          delayMicroseconds(10);
-          digitalWrite(ULTRASONIC_TRIG, LOW);
-
-          long duration = pulseIn(ULTRASONIC_ECHO, HIGH, 25000UL);
-          long distanceCm = duration / 58;
-
-          if (distanceCm > 30 && distanceCm > 1) {
-            subState = 0;
-          }
-        }
-        if (subState >= 0) {
-          if (moveForward) {
-            analogWrite(MOTOR_LEFT_FORWARD, baseSpeed + motorBiasLeft);
-            analogWrite(MOTOR_LEFT_BACK, 0);
-            analogWrite(MOTOR_RIGHT_FORWARD, baseSpeed + motorBiasRight);
-            analogWrite(MOTOR_RIGHT_BACK, 0);
-          }
-
-          readSensors();
-          updateCalibration();
-
-          unsigned long now = millis();
-
-          int blackCount = 0;
-          for (int i = 0; i < NUM_SENSORS; i++) {
-            if (sensorValues[i] > dynamicBlackThreshold) blackCount++;
-          }
-
-          if (blackCount >= 1) {
-            if (!onLine) {
-              lineStartTime = now;
-              onLine = true;
-            } else if (now - lineStartTime >= lineHoldTime) {
-              lineTransitions++;
-              onLine = false;
-              /*Serial.print("Line #: ");
-                Serial.println(lineTransitions);*/
-            }
-          } else {
-            onLine = false;
-          }
-
-          dynamicBlackThreshold = 0;
-          for (int i = 0; i < NUM_SENSORS; i++) {
-            dynamicBlackThreshold += sensorMax[i];
-          }
-          dynamicBlackThreshold /= NUM_SENSORS;
-          dynamicBlackThreshold -= 50;
-
-
-          if (lineTransitions >= 6 && subState == 0) subState = 2;
-        }
-        if (subState == 2) {
-          servoWrite(2000);
-          int blackCount = 0;
-          Serial.print("Square state");
-          for (int i = 0; i < NUM_SENSORS; i++) {
-            if (sensorValues[i] > dynamicBlackThreshold) blackCount++;
-          }
-          Serial.print(blackCount);
-
-          if (blackCount >= 6) {
-            Serial.print("Square");
-            stopMotors();
-            moveForward = false;
-            actionStartTime = millis();
-            subState = 3;
-          }
-        }
-
-        else if (subState == 3) {
-          Serial.print("State 3");
-          Serial.print(actionStartTime);
-          if (millis() - actionStartTime > 1000) subState = 4;
-        }
-
-        else if (subState == 4) {
-          Serial.print("State 4");
-          actionStartTime = millis();
-          subState = 5;
-        }
-
-        else if (subState == 5) {
-          if (millis() - actionStartTime > 500) subState = 6;
-        }
-
-        else if (subState == 6) {
-          servoWrite(1000);
-          driveDistance(80.0, baseSpeed);
-          subState = 7;
-        }
-
-        else if (subState == 7) {
-          turnLeft90();
-          subState = 8;
-        }
-
-        else if (subState == 8) {
-          int blackCount = 0;
-          for (int i = 0; i < NUM_SENSORS; i++) {
-            if (sensorValues[i] > dynamicBlackThreshold) blackCount++;
-          }
-
-          if (blackCount >= 1 && blackCount <= 3) {
-            stopMotors();
-            state = 1;
-            moveForward = false;
-          } else {
-            moveForward = true;
-          }
-        }
-
+        runStartProcedure();
         break;
       }
 
-
-    case 1:
+    case STATE_FOLLOW_LINE:
       {
-        // Keep applying closed pulse so the gripper stays shut.
-        servoWrite(SERVO_CLOSED_PULSE);
-
-        for (int i = 0; i < NUM_SENSORS; i++) {
-          sensorValues[i] = analogRead(SENSOR_PINS[i]);
-        }
-
-        // Finish condition: black square detected by all sensors.
-        if (areAllSensorsBlack()) {
-          if (allBlackStartMs == 0) {
-            allBlackStartMs = millis();
-          } else if (millis() - allBlackStartMs >= FINISH_BLACK_HOLD_MS) {
-            finishRace();
-          }
-        } else {
-          allBlackStartMs = 0;
-        }
-
-        if (isObstacleDetected()) {
-          avoidObject();
-          return;
-        }
-
-        if (sensorValues[3] > dynamicBlackThreshold && sensorValues[4] > dynamicBlackThreshold) {
-          // Perfectly centered. Full speed forward
-          driveForward(SPEED_FULL, SPEED_FULL);
-          lastTurnDir = 0;
-
-        } else if (sensorValues[3] > dynamicBlackThreshold) {
-          // Slight right. Both wheels moving, left faster
-          driveForward(SPEED_FULL, SPEED_SLIGHT_CORRECT);
-          lastTurnDir = -1;
-
-        } else if (sensorValues[4] > dynamicBlackThreshold) {
-          // Slight left. Both wheels moving, right faster
-          driveForward(SPEED_SLIGHT_CORRECT, SPEED_FULL);
-          lastTurnDir = 1;
-
-        } else if (sensorValues[2] > dynamicBlackThreshold) {
-          // Moderate right. Tighter differential
-          driveForward(SPEED_FULL, SPEED_HARD_CORRECT);
-          lastTurnDir = -1;
-
-        } else if (sensorValues[5] > dynamicBlackThreshold) {
-          // Moderate left. Tighter differential
-          driveForward(SPEED_HARD_CORRECT, SPEED_FULL);
-          lastTurnDir = 1;
-
-        } else if (sensorValues[1] > dynamicBlackThreshold) {
-          // Sharp right. Tank turn (left fwd, right rev)
-          tankTurnRight(SPEED_TANK_SHARP);
-          lastTurnDir = -1;
-
-        } else if (sensorValues[6] > dynamicBlackThreshold) {
-          // Sharp left. Tank turn (right fwd, left rev)
-          tankTurnLeft(SPEED_TANK_SHARP);
-          lastTurnDir = 1;
-
-        } else if (sensorValues[0] > dynamicBlackThreshold) {
-          // Very sharp right
-          tankTurnRight(SPEED_FULL);
-          lastTurnDir = -1;
-
-        } else if (sensorValues[7] > dynamicBlackThreshold) {
-          // Very sharp left
-          tankTurnLeft(SPEED_FULL);
-          lastTurnDir = 1;
-
-        } else {
-          // Line completely lost continue turning in last known direction
-          if (lastTurnDir < 0) {
-            tankTurnRight(SPEED_SEARCH);
-          } else if (lastTurnDir > 0) {
-            tankTurnLeft(SPEED_SEARCH);
-          } else {
-            driveForward(SPEED_STRAIGHT_LOST, SPEED_STRAIGHT_LOST);
-          }
-        }
-
-        // Update indicator lights based on turn direction
-        if (lastTurnDir < 0) {
-          rightSignalLights();
-        } else if (lastTurnDir > 0) {
-          leftSignalLights();
-        } else {
-          lightsOff();
-        }
+        runFollowLineProcedure();
         break;
       }
+
+    case STATE_FINISH:
+      {
+        runFinishProcedure();
+        break;
+      }
+  }
+}
+
+void runStartProcedure() {
+  if (subState == -1) {
+    digitalWrite(ULTRASONIC_TRIG, LOW);
+    delayMicroseconds(2);
+    digitalWrite(ULTRASONIC_TRIG, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(ULTRASONIC_TRIG, LOW);
+
+    long duration = pulseIn(ULTRASONIC_ECHO, HIGH, 25000UL);
+    long distanceCm = duration / 58;
+
+    if (distanceCm > 20 && distanceCm > 1) {
+      subState = 0;
+    }
+  }
+
+  if (subState >= 0) {
+    if (moveForward) {
+      analogWrite(MOTOR_LEFT_FORWARD, baseSpeed + motorBiasLeft);
+      analogWrite(MOTOR_LEFT_BACK, 0);
+      analogWrite(MOTOR_RIGHT_FORWARD, baseSpeed + motorBiasRight);
+      analogWrite(MOTOR_RIGHT_BACK, 0);
+      setLightsByMode(LIGHT_MODE_FORWARD);
+    }
+
+    readSensors();
+    updateCalibration();
+
+    unsigned long now = millis();
+
+    int blackCount = 0;
+    for (int i = 0; i < NUM_SENSORS; i++) {
+      if (sensorValues[i] > dynamicBlackThreshold) blackCount++;
+    }
+
+    if (blackCount >= 1) {
+      if (!onLine) {
+        lineStartTime = now;
+        onLine = true;
+      } else if (now - lineStartTime >= lineHoldTime) {
+        lineTransitions++;
+        onLine = false;
+      }
+    } else {
+      onLine = false;
+    }
+
+    dynamicBlackThreshold = 0;
+    for (int i = 0; i < NUM_SENSORS; i++) {
+      dynamicBlackThreshold += sensorMax[i];
+    }
+
+    dynamicBlackThreshold /= NUM_SENSORS;
+    dynamicBlackThreshold -= 50;
+
+    if (lineTransitions >= 6 && subState == 0) {
+      subState = 2;
+    }
+  }
+
+  if (subState == 2) {
+    setGripperTarget(2000);
+    holdGripper();
+
+    int blackCount = 0;
+
+    for (int i = 0; i < NUM_SENSORS; i++) {
+      if (sensorValues[i] > dynamicBlackThreshold) blackCount++;
+    }
+
+    if (blackCount >= 6) {
+      stopMotors();
+
+      moveForward = false;
+
+      actionStartTime = millis();
+      subState = 3;
+    }
+  }
+
+  else if (subState == 3) {
+    if (millis() - actionStartTime > 1000) subState = 4;
+  }
+
+  else if (subState == 4) {
+    actionStartTime = millis();
+    subState = 5;
+  }
+
+  else if (subState == 5) {
+    if (millis() - actionStartTime > 500) {
+      subState = 6;
+    }
+  }
+
+  else if (subState == 6) {
+    setGripperTarget(SERVO_CLOSED_PULSE);
+    driveDistance(140.0, baseSpeed);
+    subState = 7;
+  }
+
+  else if (subState == 7) {
+    turn(-90);
+    subState = 8;
+  }
+
+  else if (subState == 8) {
+    int blackCount = 0;
+
+    for (int i = 0; i < NUM_SENSORS; i++) {
+      if (sensorValues[i] > dynamicBlackThreshold) {
+        blackCount++;
+      }
+    }
+
+    if (blackCount >= 1 && blackCount <= 3) {
+      stopMotors();
+
+      state = STATE_FOLLOW_LINE;
+      moveForward = false;
+    } else {
+      moveForward = true;
+    }
+  }
+}
+
+void runFollowLineProcedure() {
+  // Keep gripper closed without blocking every control cycle.
+  setGripperTarget(SERVO_CLOSED_PULSE);
+  holdGripper();
+
+  for (int i = 0; i < NUM_SENSORS; i++) {
+    sensorValues[i] = analogRead(SENSOR_PINS[i]);
+  }
+
+  // Finish condition: black square detected by all sensors.
+  if (areAllSensorsBlack()) {
+    if (allBlackStartMs == 0) {
+      allBlackStartMs = millis();
+    } else if (millis() - allBlackStartMs >= FINISH_BLACK_HOLD_MS) {
+      state = STATE_FINISH;
+      return;
+    }
+  } else {
+    allBlackStartMs = 0;
+  }
+
+  if (isObstacleDetected()) {
+    avoidObject();
+    return;
+  }
+
+  if (sensorValues[3] > dynamicBlackThreshold && sensorValues[4] > dynamicBlackThreshold) {
+    // Perfectly centered. Full speed forward
+    driveForward(SPEED_FULL, SPEED_FULL);
+    lastTurnDir = 0;
+
+  } else if (sensorValues[3] > dynamicBlackThreshold) {
+    // Slight right. Both wheels moving, left faster
+    driveForward(SPEED_FULL, SPEED_SLIGHT_CORRECT);
+    lastTurnDir = -1;
+
+  } else if (sensorValues[4] > dynamicBlackThreshold) {
+    // Slight left. Both wheels moving, right faster
+    driveForward(SPEED_SLIGHT_CORRECT, SPEED_FULL);
+    lastTurnDir = 1;
+
+  } else if (sensorValues[2] > dynamicBlackThreshold) {
+    // Moderate right. Tighter differential
+    driveForward(SPEED_FULL, SPEED_HARD_CORRECT);
+    lastTurnDir = -1;
+
+  } else if (sensorValues[5] > dynamicBlackThreshold) {
+    // Moderate left. Tighter differential
+    driveForward(SPEED_HARD_CORRECT, SPEED_FULL);
+    lastTurnDir = 1;
+
+  } else if (sensorValues[1] > dynamicBlackThreshold) {
+    // Sharp right. Tank turn (left fwd, right rev)
+    tankTurnRight(SPEED_TANK_SHARP);
+    lastTurnDir = -1;
+
+  } else if (sensorValues[6] > dynamicBlackThreshold) {
+    // Sharp left. Tank turn (right fwd, left rev)
+    tankTurnLeft(SPEED_TANK_SHARP);
+    lastTurnDir = 1;
+
+  } else if (sensorValues[0] > dynamicBlackThreshold) {
+    // Very sharp right
+    tankTurnRight(SPEED_FULL);
+    lastTurnDir = -1;
+
+  } else if (sensorValues[7] > dynamicBlackThreshold) {
+    // Very sharp left
+    tankTurnLeft(SPEED_FULL);
+    lastTurnDir = 1;
+
+  } else {
+    // Line completely lost continue turning in last known direction
+    if (lastTurnDir < 0) {
+      tankTurnRight(SPEED_SEARCH);
+    } else if (lastTurnDir > 0) {
+      tankTurnLeft(SPEED_SEARCH);
+    } else {
+      driveForward(SPEED_STRAIGHT_LOST, SPEED_STRAIGHT_LOST);
+    }
+  }
+
+  // Update indicator lights based on turn direction
+  if (lastTurnDir < 0) {
+    setLightsByMode(LIGHT_MODE_RIGHT_SIGNAL);
+  } else if (lastTurnDir > 0) {
+    setLightsByMode(LIGHT_MODE_LEFT_SIGNAL);
+  } else {
+    setLightsByMode(LIGHT_MODE_FORWARD);
   }
 }
 
@@ -397,24 +433,43 @@ void stopMotors() {
   analogWrite(MOTOR_LEFT_BACK, 0);
   analogWrite(MOTOR_RIGHT_FORWARD, 0);
   analogWrite(MOTOR_RIGHT_BACK, 0);
+  setLightsByMode(LIGHT_MODE_STOPPED);
 }
 
-void leftSignalLights() {
-  pixels.clear();
-  pixels.setPixelColor(0, pixels.Color(255, 172, 28));  // front-left
-  pixels.setPixelColor(3, pixels.Color(255, 172, 28));  // back-left
-  pixels.show();
-}
+void setLightsByMode(int mode) {
+  if (mode == currentLightMode) {
+    return;
+  }
 
-void rightSignalLights() {
+  currentLightMode = mode;
   pixels.clear();
-  pixels.setPixelColor(1, pixels.Color(255, 172, 28));  // front-right
-  pixels.setPixelColor(2, pixels.Color(255, 172, 28));  // back-right
-  pixels.show();
-}
 
-void lightsOff() {
-  pixels.clear();
+  switch (mode) {
+    case LIGHT_MODE_LEFT_SIGNAL:
+      pixels.setPixelColor(3, pixels.Color(255, 172, 28));  // front-left
+      pixels.setPixelColor(0, pixels.Color(255, 172, 28));  // back-left
+      break;
+
+    case LIGHT_MODE_RIGHT_SIGNAL:
+      pixels.setPixelColor(1, pixels.Color(255, 172, 28));  // front-right
+      pixels.setPixelColor(2, pixels.Color(255, 172, 28));  // back-right
+      break;
+
+    case LIGHT_MODE_FORWARD:
+      pixels.setPixelColor(2, pixels.Color(255, 255, 255)); // front-right
+      pixels.setPixelColor(3, pixels.Color(255, 255, 255)); // front-left
+      break;
+
+    case LIGHT_MODE_STOPPED:
+      pixels.setPixelColor(0, pixels.Color(255, 0, 0)); // back-left
+      pixels.setPixelColor(1, pixels.Color(255, 0, 0)); // back-right
+      break;
+
+    case LIGHT_MODE_OFF:
+    default:
+      break;
+  }
+
   pixels.show();
 }
 
@@ -428,31 +483,54 @@ bool areAllSensorsBlack() {
   return true;
 }
 
-void finishRace() {
-  lightsOff();
+void runFinishProcedure() {
+  setLightsByMode(LIGHT_MODE_OFF);
 
   // Finishing sequence: forward, backward, then drop object.
-  driveForward(FINISH_SEQUENCE_SPEED, FINISH_SEQUENCE_SPEED);
+  driveForward(SPEED_FULL, SPEED_FULL);
   delay(FINISH_FORWARD_MS);
   stopMotors();
 
-  driveBackward(FINISH_SEQUENCE_SPEED, FINISH_SEQUENCE_SPEED);
+  driveBackward(SPEED_FULL, SPEED_FULL);
   delay(FINISH_BACKWARD_MS);
   stopMotors();
 
   // Release gripper before final forward move.
-  servoWrite(SERVO_OPEN_PULSE);
+  setGripperTarget(SERVO_OPEN_PULSE);
 
-  driveBackward(FINISH_SEQUENCE_SPEED, FINISH_SEQUENCE_SPEED);
+  driveBackward(SPEED_FULL, SPEED_FULL);
   delay(FINISH_BACKWARD_MS);
   stopMotors();
 
 
   // Hold final state forever: gripper open and motors stopped.
   while (true) {
-    servoWrite(SERVO_OPEN_PULSE);
+    holdGripper();
     stopMotors();
   }
+}
+
+void holdGripper() {
+  if (currentServoPulse < 0) {
+    return;
+  }
+
+  unsigned long now = millis();
+
+  if (now - lastServoHoldMs >= SERVO_HOLD_INTERVAL_MS) {
+    servoWrite(currentServoPulse);
+    lastServoHoldMs = now;
+  }
+}
+
+void setGripperTarget(int pulseWidth) {
+  if (currentServoPulse == pulseWidth) {
+    return;
+  }
+
+  currentServoPulse = pulseWidth;
+  servoWrite(currentServoPulse);
+  lastServoHoldMs = millis();
 }
 
 void servoWrite(int pulseWidth) {
@@ -467,6 +545,14 @@ void servoWrite(int pulseWidth) {
 }
 
 bool isObstacleDetected() {
+  unsigned long now = millis();
+
+  if (now - lastObstacleCheckMs < OBSTACLE_CHECK_INTERVAL_MS) {
+    return obstacleDetectedCached;
+  }
+
+  lastObstacleCheckMs = now;
+
   digitalWrite(ULTRASONIC_TRIG, LOW);
   delayMicroseconds(2);
   digitalWrite(ULTRASONIC_TRIG, HIGH);
@@ -476,16 +562,19 @@ bool isObstacleDetected() {
   long duration = pulseIn(ULTRASONIC_ECHO, HIGH, 25000UL);
 
   if (duration == 0) {
+    obstacleDetectedCached = false;
     return false;
   }
 
   long distanceCm = duration / 58;
 
-  return (distanceCm > 0 && distanceCm <= OBSTACLE_DISTANCE_CM);
+  obstacleDetectedCached = (distanceCm > 0 && distanceCm <= OBSTACLE_DISTANCE_CM);
+  
+  return obstacleDetectedCached;
 }
 
 void avoidObject() {
-  servoWrite(SERVO_CLOSED_PULSE);
+  setGripperTarget(SERVO_CLOSED_PULSE);
   stopMotors();
 
   // Turn right ~90 degrees
@@ -516,7 +605,7 @@ void avoidObject() {
   // Move forward until line is found, then stop and exit
   driveForward(SPEED_FULL, SPEED_FULL);
   while (true) {
-    servoWrite(SERVO_CLOSED_PULSE);
+    holdGripper();
     bool lineFound = false;
 
     for (int i = 0; i < NUM_SENSORS; i++) {
@@ -564,7 +653,7 @@ void driveDistance(float millimeters, int baseSpeed) {
   rotationCounterRight = 0;
 
   float targetPulses =
-    (millimeters / (3.14159 * WHEEL_DIAMETER)) * PULSES_PER_ROTATION;
+    (millimeters / (204.2)) * PULSES_PER_ROTATION;
 
   moveForward = true;
 
@@ -577,28 +666,41 @@ void driveDistance(float millimeters, int baseSpeed) {
 }
 
 
-void turnLeft90() {
+void turn(int degrees) {
+  if (degrees == 0) {
+    stopMotors();
+    return;
+  }
+
   rotationCounterLeft = 0;
   rotationCounterRight = 0;
 
-  float wheelBase = 120.0; // 10 см між колесами
-  float arcLength = (3.14159 * wheelBase) / 4.0;
+  float wheelBase = 120.0;
+  float turnFraction = abs(degrees) / 360.0;
+  float arcLength = (3.14159 * wheelBase) * turnFraction;
 
   float targetPulses =
-    (arcLength / (3.14159 * WHEEL_DIAMETER)) * PULSES_PER_ROTATION;
+    (arcLength / (204.2)) * PULSES_PER_ROTATION;
 
   while ((abs(rotationCounterLeft) + abs(rotationCounterRight)) / 2 < targetPulses) {
-
-    // ТАНКОВИЙ ПОВОРОТ (найстабільніший)
-    analogWrite(MOTOR_LEFT_FORWARD, 0);
-    analogWrite(MOTOR_LEFT_BACK, 180);
-
-    analogWrite(MOTOR_RIGHT_FORWARD, 180);
-    analogWrite(MOTOR_RIGHT_BACK, 0);
+    if (degrees > 0) {
+      // Right turn.
+      analogWrite(MOTOR_LEFT_FORWARD, 180);
+      analogWrite(MOTOR_LEFT_BACK, 0);
+      analogWrite(MOTOR_RIGHT_FORWARD, 0);
+      analogWrite(MOTOR_RIGHT_BACK, 180);
+    } else {
+      // Left turn.
+      analogWrite(MOTOR_LEFT_FORWARD, 0);
+      analogWrite(MOTOR_LEFT_BACK, 180);
+      analogWrite(MOTOR_RIGHT_FORWARD, 180);
+      analogWrite(MOTOR_RIGHT_BACK, 0);
+    }
   }
-
-  stopMotors();
-  delay(200);
+  
+  if (TURN_SETTLE_DELAY_MS > 0) {
+    delay(TURN_SETTLE_DELAY_MS);
+  }
 }
 
 void moveStraightPID(int baseSpeed, int biasLeft, int biasRight) {
