@@ -39,7 +39,7 @@ const int OBSTACLE_DISTANCE_CM = 12;
 
 // ===== SPEED TUNING =====
 const int SPEED_FULL = 255;
-const int SPEED_SLIGHT_CORRECT = 170;
+const int SPEED_SLIGHT_CORRECT = 210;
 const int SPEED_HARD_CORRECT = 120;
 const int SPEED_TANK_SHARP = 230;
 const int SPEED_SEARCH = 255;
@@ -70,9 +70,20 @@ const int STATE_START = 0;
 const int STATE_FOLLOW_LINE = 1;
 const int STATE_FINISH = 2;
 
+// ===== START PROCEDURE PHASES =====
+const int START_PHASE_WAIT_FLAG = -1;
+const int START_PHASE_DRIVE_TO_LINE = 0;
+const int START_PHASE_CONFIRM_PICKUP_ZONE = 2;
+const int START_PHASE_WAIT_BEFORE_CLOSE = 3;
+const int START_PHASE_SET_CLOSE_TIMER = 4;
+const int START_PHASE_WAIT_AFTER_CLOSE = 5;
+const int START_PHASE_CLOSE_AND_DRIVE = 6;
+const int START_PHASE_TURN_LEFT = 7;
+const int START_PHASE_FIND_LINE = 8;
+
 // ===== RUNTIME STATE: MAIN FLOW =====
 int state = STATE_START;
-int subState = -1;
+int startPhase = START_PHASE_WAIT_FLAG;
 unsigned long actionStartTime = 0;
 bool moveForward = true;
 
@@ -183,7 +194,7 @@ void loop() {
 }
 
 void runStartProcedure() {
-  if (subState == -1) {
+  if (startPhase == START_PHASE_WAIT_FLAG) {
     digitalWrite(ULTRASONIC_TRIG, LOW);
     delayMicroseconds(2);
     digitalWrite(ULTRASONIC_TRIG, HIGH);
@@ -194,11 +205,11 @@ void runStartProcedure() {
     long distanceCm = duration / 58;
 
     if (distanceCm > 20 && distanceCm > 1) {
-      subState = 0;
+      startPhase = START_PHASE_DRIVE_TO_LINE;
     }
   }
 
-  if (subState >= 0) {
+  if (startPhase >= START_PHASE_DRIVE_TO_LINE) {
     if (moveForward) {
       analogWrite(MOTOR_LEFT_FORWARD, baseSpeed + motorBiasLeft);
       analogWrite(MOTOR_LEFT_BACK, 0);
@@ -237,12 +248,12 @@ void runStartProcedure() {
     dynamicBlackThreshold /= NUM_SENSORS;
     dynamicBlackThreshold -= 50;
 
-    if (lineTransitions >= 6 && subState == 0) {
-      subState = 2;
+    if (lineTransitions >= 6 && startPhase == START_PHASE_DRIVE_TO_LINE) {
+      startPhase = START_PHASE_CONFIRM_PICKUP_ZONE;
     }
   }
 
-  if (subState == 2) {
+  if (startPhase == START_PHASE_CONFIRM_PICKUP_ZONE) {
     setGripperTarget(2000);
     holdGripper();
 
@@ -258,37 +269,34 @@ void runStartProcedure() {
       moveForward = false;
 
       actionStartTime = millis();
-      subState = 3;
+      startPhase = START_PHASE_SET_CLOSE_TIMER;
     }
   }
 
-  else if (subState == 3) {
-    if (millis() - actionStartTime > 1000) subState = 4;
-  }
-
-  else if (subState == 4) {
+  else if (startPhase == START_PHASE_SET_CLOSE_TIMER) {
     actionStartTime = millis();
-    subState = 5;
+    startPhase = START_PHASE_WAIT_AFTER_CLOSE;
   }
 
-  else if (subState == 5) {
+  else if (startPhase == START_PHASE_WAIT_AFTER_CLOSE) {
     if (millis() - actionStartTime > 500) {
-      subState = 6;
+      startPhase = START_PHASE_CLOSE_AND_DRIVE;
     }
   }
 
-  else if (subState == 6) {
-    setGripperTarget(SERVO_CLOSED_PULSE);
+  else if (startPhase == START_PHASE_CLOSE_AND_DRIVE) {
     driveDistance(140.0, baseSpeed);
-    subState = 7;
+    setGripperTarget(SERVO_CLOSED_PULSE);
+    delay(100);
+    startPhase = START_PHASE_TURN_LEFT;
   }
 
-  else if (subState == 7) {
+  else if (startPhase == START_PHASE_TURN_LEFT) {
     turn(-90);
-    subState = 8;
+    startPhase = START_PHASE_FIND_LINE;
   }
 
-  else if (subState == 8) {
+  else if (startPhase == START_PHASE_FIND_LINE) {
     int blackCount = 0;
 
     for (int i = 0; i < NUM_SENSORS; i++) {

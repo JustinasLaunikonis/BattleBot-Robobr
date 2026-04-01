@@ -1,190 +1,118 @@
 # Race Day Robot Guide
 
-This guide explains how our robot works.
+This guide matches the current behavior in `race-day.ino`.
 
-The robot has three main jobs:
-1. Starts the race for our team.
-2. Follows the black line as fast and smoothly as possible.
-3. Detects the finish area and runs its finish sequence.
+The robot has 3 top-level states:
+1. `STATE_START`
+2. `STATE_FOLLOW_LINE`
+3. `STATE_FINISH`
 
-## System Flow Diagram
+## Updated Activity Diagram
 
 ```mermaid
 flowchart TD
-  A[Power On] --> B[Setup Pins, Lights, Sensors]
-  B --> C[Close Gripper]
-  C --> D[Main Loop]
+  A[Power On] --> B[setup]
+  B --> C[Init pins, interrupts, sensors, NeoPixels]
+  C --> D[Set gripper OPEN target]
+  D --> E[loop]
 
-  D --> E[Keep Gripper Closed]
-  E --> F[Read 8 Line Sensors]
+  E --> F{state}
 
-  F --> G{All 8 Sensors Black?}
-  G -- No --> H[Reset Finish Timer]
-  G -- Yes --> I{Held for FINISH_BLACK_HOLD_MS?}
-  I -- No --> D
-  I -- Yes --> J[Finish Sequence]
+  F -->|STATE_START| S0
+  F -->|STATE_FOLLOW_LINE| L0
+  F -->|STATE_FINISH| X0
 
-  H --> K{Obstacle Detected?}
-  K -- Yes --> L[Avoid Object Routine]
-  L --> D
-  K -- No --> M[Line Following Decisions]
+  S0[Start: wait for flag by ultrasonic] --> S1{distanceCm > 20}
+  S1 -->|No| S0
+  S1 -->|Yes| S2[Drive and track line transitions]
+  S2 --> S3{lineTransitions >= 6}
+  S3 -->|No| S2
+  S3 -->|Yes| S4[Confirm pickup zone]
+  S4 --> S5{blackCount >= 6}
+  S5 -->|No| S4
+  S5 -->|Yes| S6[Stop, wait, close gripper, drive 140mm]
+  S6 --> S7[Turn left 90]
+  S7 --> S8{line re-found 1..3 sensors}
+  S8 -->|No| S7
+  S8 -->|Yes| L0
 
-  M --> N[Center: Drive Forward]
-  M --> O[Off-Center: Differential Speed]
-  M --> P[Far Off: Tank Turn]
-  M --> Q[Line Lost: Search Last Direction]
+  L0[Follow: keep gripper closed + hold] --> L1[Read 8 sensors]
+  L1 --> L2{all sensors black long enough}
+  L2 -->|Yes| X0
+  L2 -->|No| L3{obstacle detected}
+  L3 -->|Yes| L4[avoidObject routine]
+  L4 --> L0
+  L3 -->|No| L5[Steer: center/diff/tank/search]
+  L5 --> L6[Update LEDs by turn direction]
+  L6 --> L0
 
-  N --> R[Update Turn Signal LEDs]
-  O --> R
-  P --> R
-  Q --> R
-  R --> D
-
-  J --> J1[Lights Off]
-  J1 --> J2[Drive Forward FINISH_FORWARD_MS]
-  J2 --> J3[Stop]
-  J3 --> J4[Drive Backward FINISH_BACKWARD_MS]
-  J4 --> J5[Stop]
-  J5 --> J6[Open Gripper]
-  J6 --> J7[Hold Open + Motors Stopped Forever]
+  X0[Finish: lights off] --> X1[Forward FINISH_FORWARD_MS]
+  X1 --> X2[Backward FINISH_BACKWARD_MS]
+  X2 --> X3[Open gripper target]
+  X3 --> X4[Backward FINISH_BACKWARD_MS]
+  X4 --> X5[Forever: hold gripper + stop motors]
 ```
 
 ---
 
-## 1. Starting Procedure
+## Robot Guide
 
-When the robot is powered on, it prepares all hardware:
-- Motor pins are set so the robot can drive.
-- Sensor pins are set so it can read the line.
-- Ultrasonic sensor pins are set so it can detect obstacles.
-- NeoPixel lights are initialized.
-- Gripper servo is set to closed.
+## 1. Main Loop State Machine
 
+`loop()` dispatches by state:
+- `STATE_START` -> `runStartProcedure()`
+- `STATE_FOLLOW_LINE` -> `runFollowLineProcedure()`
+- `STATE_FINISH` -> `runFinishProcedure()`
 
-### Important startup code
+## 2. Start Procedure
 
-```cpp
-void setup() {
-  pinMode(SERVO_PIN, OUTPUT);
+`runStartProcedure()` uses named phase constants:
+- `START_PHASE_WAIT_FLAG`: wait until ultrasonic distance is valid and `> 20 cm`.
+- `START_PHASE_DRIVE_TO_LINE`: move forward while counting line transitions.
+- `START_PHASE_CONFIRM_PICKUP_ZONE`: confirm black square area.
+- `START_PHASE_SET_CLOSE_TIMER` + `START_PHASE_WAIT_AFTER_CLOSE`: short wait before close-and-drive.
+- `START_PHASE_CLOSE_AND_DRIVE`: drive `140.0 mm`, close gripper, short delay.
+- `START_PHASE_TURN_LEFT`: `turn(-90)`.
+- `START_PHASE_FIND_LINE`: detect line and switch to follow state.
 
-  pinMode(MOTOR_LEFT_FORWARD, OUTPUT);
-  pinMode(MOTOR_LEFT_BACK, OUTPUT);
-  pinMode(MOTOR_RIGHT_FORWARD, OUTPUT);
-  pinMode(MOTOR_RIGHT_BACK, OUTPUT);
-  pinMode(ULTRASONIC_TRIG, OUTPUT);
-  pinMode(ULTRASONIC_ECHO, INPUT);
+## 3. Line Following
 
-  pixels.begin();
-  pixels.setBrightness(50);
-  pixels.show();
+In `runFollowLineProcedure()`:
+- Gripper is kept closed with `setGripperTarget(SERVO_CLOSED_PULSE)` and periodic `holdGripper()`.
+- All 8 sensors are read every cycle.
+- Finish is detected by sustained all-black detection (`FINISH_BLACK_HOLD_MS`).
+- Obstacle check is run every `OBSTACLE_CHECK_INTERVAL_MS`.
+- Steering logic:
+1. Center sensors -> full forward
+2. Slight offsets -> differential wheel speed
+3. Outer sensors -> tank turns
+4. No line -> search in last known direction
+- LEDs are updated based on turn direction (`left`, `right`, `forward`, `stop`).
 
-  // Start with gripper closed.
-  servoWrite(SERVO_CLOSED_PULSE);
-}
-```
+## 4. Obstacle Avoidance
 
----
+`avoidObject()` performs a fixed detour sequence:
+- Stop
+- Right turn
+- Forward
+- Left turn
+- Forward
+- Left turn
+- Forward until line is detected, then return to follow state
 
-## 2. Following Line
+## 5. Finish Procedure
 
-The robot uses 8 line sensors (left to right) to decide steering.
+`runFinishProcedure()` sequence:
+1. Lights off
+2. Forward for `FINISH_FORWARD_MS`
+3. Backward for `FINISH_BACKWARD_MS`
+4. Set gripper to open
+5. Backward for `FINISH_BACKWARD_MS` again
+6. Infinite hold: keep gripper pulse alive and motors stopped
 
-### How the sensors are interpreted
+## 6. Helper Systems
 
-- A sensor value above `BLACK_THRESHOLD` means that sensor sees black line.
-- Middle sensors (`3` and `4`) are most important for straight driving.
-- If the line drifts left or right, speed is adjusted between wheels.
-- If the line is far to one side, robot uses a tank turn.
-- If no sensor sees the line, it keeps turning in the last known direction until it finds it again.
-
-### Core sensor read + finish-check block
-
-```cpp
-for (int i = 0; i < NUM_SENSORS; i++) {
-  sensorValues[i] = analogRead(SENSOR_PINS[i]);
-}
-
-if (areAllSensorsBlack()) {
-  if (allBlackStartMs == 0) {
-    allBlackStartMs = millis();
-  } else if (millis() - allBlackStartMs >= FINISH_BLACK_HOLD_MS) {
-    finishRace();
-  }
-} else {
-  allBlackStartMs = 0;
-}
-```
-
-Basic explanation:
-- The robot quickly reads all 8 sensors.
-- If all sensors see black, it starts a timer.
-- It only finishes if all-black stays true long enough.
-- If black is not continuous, timer resets (so we don't finish the race at intersections).
-
-### Steering examples
-
-```cpp
-if (sensorValues[3] > BLACK_THRESHOLD && sensorValues[4] > BLACK_THRESHOLD) {
-  driveForward(SPEED_FULL, SPEED_FULL);
-} else if (sensorValues[3] > BLACK_THRESHOLD) {
-  driveForward(SPEED_FULL, SPEED_SLIGHT_CORRECT);
-} else if (sensorValues[4] > BLACK_THRESHOLD) {
-  driveForward(SPEED_SLIGHT_CORRECT, SPEED_FULL);
-}
-```
-
-What this does:
-- Centered on line: both wheels fast.
-- Line slightly right: slow right wheel a little to curve right.
-- Line slightly left: slow left wheel a little to curve left.
-
-### Obstacle behavior while following line
-
-The robot checks distance using the ultrasonic sensor.
-If something is too close, it runs `avoidObject()` and then returns to line following.
-
-```cpp
-if (isObstacleDetected()) {
-  avoidObject();
-  return;
-}
-```
-
----
-
-## 3. Finish Procedure
-
-The finish is detected when all 8 sensors see black continuously for a short period of time.
-This is used because track intersections can briefly look like finish.
-
-Once finish is confirmed, the robot runs this sequence:
-1. Lights off.
-2. Drive forward for `FINISH_FORWARD_MS`.
-3. Stop.
-4. Drive backward for `FINISH_BACKWARD_MS`.
-5. Stop.
-6. Open gripper (release object).
-7. Final state: gripper stays open and motors stay stopped forever.
-
-### Finish code snippet
-
-```cpp
-void finishRace() {
-  lightsOff();
-
-  driveForward(FINISH_SEQUENCE_SPEED, FINISH_SEQUENCE_SPEED);
-  delay(FINISH_FORWARD_MS);
-  stopMotors();
-
-  driveBackward(FINISH_SEQUENCE_SPEED, FINISH_SEQUENCE_SPEED);
-  delay(FINISH_BACKWARD_MS);
-  stopMotors();
-
-  servoWrite(SERVO_OPEN_PULSE);
-
-  while (true) {
-    servoWrite(SERVO_OPEN_PULSE);
-    stopMotors();
-  }
-}
-```
+- `setGripperTarget(...)`: updates the commanded servo pulse width (for example `SERVO_OPEN_PULSE` or `SERVO_CLOSED_PULSE`), immediately transmits the new pulse, and refreshes the hold timer.
+- `holdGripper()`: sends small repeat signals so the gripper keeps holding the object firmly
+- `setLightsByMode(...)`: changes robot lights only when needed
+- `driveDistance(...)` and `turn(...)`: make the robot move an exact distance or turn by an exact angle
