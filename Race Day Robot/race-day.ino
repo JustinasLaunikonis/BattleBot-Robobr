@@ -40,7 +40,7 @@ const int OBSTACLE_DISTANCE_CM = 12;
 // ===== SPEED TUNING =====
 const int SPEED_FULL = 255;
 const int SPEED_SLIGHT_CORRECT = 210;
-const int SPEED_HARD_CORRECT = 120;
+const int SPEED_HARD_CORRECT = 160;
 const int SPEED_TANK_SHARP = 230;
 const int SPEED_SEARCH = 255;
 const int SPEED_STRAIGHT_LOST = 200;
@@ -115,30 +115,6 @@ unsigned long lastServoHoldMs = 0;
 unsigned long lastObstacleCheckMs = 0;
 bool obstacleDetectedCached = false;
 
-// ===== FUNCTIONS PROTOTYPES =====
-void stopMotors();
-void moveStraightPID(int baseSpeed, int biasLeft, int biasRight);
-void driveDistance(float millimeters, int baseSpeed);
-void turn(int degrees);
-void readSensors();
-void servoWrite(int pulseWidth);
-void onLeftWheelPulse();
-void onRightWheelPulse();
-void updateCalibration();
-void driveForward(int leftSpeed, int rightSpeed);
-void tankTurnRight(int speed);
-void tankTurnLeft(int speed);
-void driveBackward(int leftSpeed, int rightSpeed);
-void setLightsByMode(int mode);
-void setGripperTarget(int pulseWidth);
-void holdGripper();
-bool areAllSensorsBlack();
-bool isObstacleDetected();
-void avoidObject();
-void runStartProcedure();
-void runFollowLineProcedure();
-void runFinishProcedure();
-
 void setup() {
   Serial.begin(9600);
 
@@ -210,6 +186,7 @@ void runStartProcedure() {
   }
 
   if (startPhase >= START_PHASE_DRIVE_TO_LINE) {
+    // Drive forward while watching the sensors for the black marker pattern.
     if (moveForward) {
       analogWrite(MOTOR_LEFT_FORWARD, baseSpeed + motorBiasLeft);
       analogWrite(MOTOR_LEFT_BACK, 0);
@@ -228,6 +205,7 @@ void runStartProcedure() {
       if (sensorValues[i] > dynamicBlackThreshold) blackCount++;
     }
 
+    // Count a line only after the sensors stay on it for long enough
     if (blackCount >= 1) {
       if (!onLine) {
         lineStartTime = now;
@@ -240,6 +218,7 @@ void runStartProcedure() {
       onLine = false;
     }
 
+    // Recompute the threshold from the current sensor so startup adapts to the field.
     dynamicBlackThreshold = 0;
     for (int i = 0; i < NUM_SENSORS; i++) {
       dynamicBlackThreshold += sensorMax[i];
@@ -285,6 +264,7 @@ void runStartProcedure() {
   }
 
   else if (startPhase == START_PHASE_CLOSE_AND_DRIVE) {
+    // Move into the object, close the gripper, and then prepare to turn toward the track.
     driveDistance(140.0, baseSpeed);
     setGripperTarget(SERVO_CLOSED_PULSE);
     delay(100);
@@ -297,6 +277,7 @@ void runStartProcedure() {
   }
 
   else if (startPhase == START_PHASE_FIND_LINE) {
+    // After turning, search for the line again and switch into follow mode once it is found.
     int blackCount = 0;
 
     for (int i = 0; i < NUM_SENSORS; i++) {
@@ -325,7 +306,7 @@ void runFollowLineProcedure() {
     sensorValues[i] = analogRead(SENSOR_PINS[i]);
   }
 
-  // Finish condition: black square detected by all sensors.
+  // Finish condition: all sensors on black for a short hold time means the end zone was reached.
   if (areAllSensorsBlack()) {
     if (allBlackStartMs == 0) {
       allBlackStartMs = millis();
@@ -342,6 +323,7 @@ void runFollowLineProcedure() {
     return;
   }
 
+  // The center sensors define the line-following decisions.
   if (sensorValues[3] > dynamicBlackThreshold && sensorValues[4] > dynamicBlackThreshold) {
     // Perfectly centered. Full speed forward
     driveForward(SPEED_FULL, SPEED_FULL);
@@ -388,7 +370,7 @@ void runFollowLineProcedure() {
     lastTurnDir = 1;
 
   } else {
-    // Line completely lost continue turning in last known direction
+    // If the line is lost, continue searching in the last known direction.
     if (lastTurnDir < 0) {
       tankTurnRight(SPEED_SEARCH);
     } else if (lastTurnDir > 0) {
@@ -398,7 +380,7 @@ void runFollowLineProcedure() {
     }
   }
 
-  // Update indicator lights based on turn direction
+  // Update indicator lights based on the direction the robot is currently correcting toward.
   if (lastTurnDir < 0) {
     setLightsByMode(LIGHT_MODE_RIGHT_SIGNAL);
   } else if (lastTurnDir > 0) {
@@ -482,6 +464,7 @@ void setLightsByMode(int mode) {
 }
 
 bool areAllSensorsBlack() {
+  // Return true only when every sensor reads above the black threshold.
   for (int i = 0; i < NUM_SENSORS; i++) {
     if (sensorValues[i] <= BLACK_THRESHOLD) {
       return false;
@@ -503,7 +486,7 @@ void runFinishProcedure() {
   delay(FINISH_BACKWARD_MS);
   stopMotors();
 
-  // Release gripper before final forward move.
+  // Open the gripper so the object can be released into the finish zone.
   setGripperTarget(SERVO_OPEN_PULSE);
 
   driveBackward(SPEED_FULL, SPEED_FULL);
@@ -519,6 +502,7 @@ void runFinishProcedure() {
 }
 
 void holdGripper() {
+  // Re-send the servo pulse periodically so the gripper stays in position.
   if (currentServoPulse < 0) {
     return;
   }
@@ -532,6 +516,7 @@ void holdGripper() {
 }
 
 void setGripperTarget(int pulseWidth) {
+  // Update the desired servo position only when it changes.
   if (currentServoPulse == pulseWidth) {
     return;
   }
@@ -542,6 +527,7 @@ void setGripperTarget(int pulseWidth) {
 }
 
 void servoWrite(int pulseWidth) {
+  // Generate a repeated servo pulse for the requested position.
   unsigned long start = millis();
 
   while (millis() - start < 20) {
@@ -553,6 +539,7 @@ void servoWrite(int pulseWidth) {
 }
 
 bool isObstacleDetected() {
+  // Cache ultrasonic readings so the sensor is not queried every single loop cycle.
   unsigned long now = millis();
 
   if (now - lastObstacleCheckMs < OBSTACLE_CHECK_INTERVAL_MS) {
@@ -582,6 +569,7 @@ bool isObstacleDetected() {
 }
 
 void avoidObject() {
+  // This is a fixed escape pattern that steers around an obstacle and tries to reacquire the line.
   setGripperTarget(SERVO_CLOSED_PULSE);
   stopMotors();
 
@@ -610,7 +598,7 @@ void avoidObject() {
   delay(450);
   stopMotors();
 
-  // Move forward until line is found, then stop and exit
+  // Move forward until the line is found, then stop and return to normal control.
   driveForward(SPEED_FULL, SPEED_FULL);
   while (true) {
     holdGripper();
@@ -634,20 +622,24 @@ void avoidObject() {
 
 
 void onLeftWheelPulse() {
+  // Interrupt handler: count each left encoder pulse.
   rotationCounterLeft++;
 }
 
 void onRightWheelPulse() {
+  // Interrupt handler: count each right encoder pulse.
   rotationCounterRight++;
 }
 
 void readSensors() {
+  // Load the latest analog values from all eight line sensors.
   for (int i = 0; i < NUM_SENSORS; i++) {
     sensorValues[i] = analogRead(SENSOR_PINS[i]);
   }
 }
 
 void updateCalibration() {
+  // Smoothly blend new readings into the calibration ranges instead of jumping abruptly.
   float alpha = 0.05;
 
   for (int i = 0; i < NUM_SENSORS; i++) {
@@ -657,11 +649,12 @@ void updateCalibration() {
 }
 
 void driveDistance(float millimeters, int baseSpeed) {
+  // Drive a measured distance by comparing encoder pulses against the target pulse count.
   rotationCounterLeft = 0;
   rotationCounterRight = 0;
 
-  float targetPulses =
-    (millimeters / (204.2)) * PULSES_PER_ROTATION;
+  // Wheel Diameter (65.0) * 3.14 = 204.2
+  float targetPulses = (millimeters / (204.2)) * PULSES_PER_ROTATION;
 
   moveForward = true;
 
@@ -675,6 +668,7 @@ void driveDistance(float millimeters, int baseSpeed) {
 
 
 void turn(int degrees) {
+  // Turn in place until the expected encoder pulse count is reached.
   if (degrees == 0) {
     stopMotors();
     return;
@@ -683,26 +677,20 @@ void turn(int degrees) {
   rotationCounterLeft = 0;
   rotationCounterRight = 0;
 
-  float wheelBase = 120.0;
   float turnFraction = abs(degrees) / 360.0;
-  float arcLength = (3.14159 * wheelBase) * turnFraction;
+  // Wheelbase (120.0) * 3.14 = 376.8
+  float arcLength = 376.8 * turnFraction;
 
-  float targetPulses =
-    (arcLength / (204.2)) * PULSES_PER_ROTATION;
+  // Wheel Diameter (65.0) * 3.14 = 204.2
+  float targetPulses = (arcLength / 204.2) * PULSES_PER_ROTATION;
 
   while ((abs(rotationCounterLeft) + abs(rotationCounterRight)) / 2 < targetPulses) {
     if (degrees > 0) {
       // Right turn.
-      analogWrite(MOTOR_LEFT_FORWARD, 180);
-      analogWrite(MOTOR_LEFT_BACK, 0);
-      analogWrite(MOTOR_RIGHT_FORWARD, 0);
-      analogWrite(MOTOR_RIGHT_BACK, 180);
+      tankTurnRight(180);
     } else {
       // Left turn.
-      analogWrite(MOTOR_LEFT_FORWARD, 0);
-      analogWrite(MOTOR_LEFT_BACK, 180);
-      analogWrite(MOTOR_RIGHT_FORWARD, 180);
-      analogWrite(MOTOR_RIGHT_BACK, 0);
+      tankTurnLeft(180);
     }
   }
   
@@ -712,6 +700,7 @@ void turn(int degrees) {
 }
 
 void moveStraightPID(int baseSpeed, int biasLeft, int biasRight) {
+  // PID correction reduces drift by comparing wheel pulse rates over time.
   static long lastLeft = 0;
   static long lastRight = 0;
   static float integral = 0;
